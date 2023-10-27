@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "lab-sam"
+s3_bucket = "lab-sam-cli"
+s3_prefix = "lab-sam"
+region = "ap-south-1"
+capabilities = "CAPABILITY_NAMED_IAM"
+image_repositories = []

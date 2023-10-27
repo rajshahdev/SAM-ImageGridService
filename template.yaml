@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  grid-maker
+  Sample SAM Template for grid-maker
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256 
+
+Resources:
+  SourceBucket:
+    Type: AWS::S3::Bucket
+
+  DestinationBucket:
+    Type: AWS::S3::Bucket
+
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'*'"
+        AllowMethods: "'POST'"
+      BinaryMediaTypes:
+        - application~1octet-stream
+        - image~1jpeg
+        - image~1jpg
+
+  CombinedFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: sam-lab-CombinedFunctionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: CombinedFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  CombinedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: image-grid/
+      Handler: app.handler
+      Runtime: python3.9
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/sam-lab-CombinedFunctionRole
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref GridObjects
+          SOURCE_BUCKET: !Ref SourceBucket
+          DESTINATION_BUCKET: !Ref DestinationBucket
+      Events:
+        AddOrGenerateGrid:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: post
+            RestApiId: !Ref ApiGatewayApi
+
+  GridObjects:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "uniqueGridId"
+          AttributeType: "S"
+        - AttributeName: "s3Key"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "uniqueGridId"
+          KeyType: "HASH"
+        - AttributeName: "s3Key"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+  CombinedFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub "/aws/lambda/${CombinedFunction}"
+      RetentionInDays: 14  # Number of days to retain the log events
+
+
+Outputs:
+  Api:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
